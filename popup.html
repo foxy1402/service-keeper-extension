@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ServiceKeeper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-section">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7V12C2 16.97 5.77 21.47 12 23C18.23 21.47 22 16.97 22 12V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 8V16M8 12H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1 class="logo-text">ServiceKeeper</h1>
+      </div>
+      <div class="header-stats">
+        <span class="stat-badge" id="activeCount">0 active</span>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="services">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7V12C2 16.97 5.77 21.47 12 23C18.23 21.47 22 16.97 22 12V7L12 2Z" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        Services
+      </button>
+      <button class="tab-btn" data-tab="2fa">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none">
+          <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        2FA
+      </button>
+      <button class="tab-btn" data-tab="settings">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 1v6m0 6v10M1 12h6m6 0h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Settings
+      </button>
+    </nav>
+
+    <!-- Services Tab -->
+    <div class="tab-content active" id="services-tab">
+      <div class="action-bar">
+        <button class="btn-primary" id="addServiceBtn">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          Add Service
+        </button>
+      </div>
+
+      <div class="service-list" id="serviceList">
+        <div class="empty-state">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7V12C2 16.97 5.77 21.47 12 23C18.23 21.47 22 16.97 22 12V7L12 2Z" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 8V16M8 12H16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <h3>No Services Yet</h3>
+          <p>Add a service to keep it alive automatically</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2FA Tab -->
+    <div class="tab-content" id="2fa-tab">
+      <div class="action-bar">
+        <button class="btn-primary" id="add2FABtn">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          Add 2FA
+        </button>
+      </div>
+
+      <div class="totp-list" id="totpList">
+        <div class="empty-state">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <h3>No 2FA Tokens</h3>
+          <p>Add your 2FA codes for easy access</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-content" id="settings-tab">
+      <div class="settings-section">
+        <h3 class="section-title">General Settings</h3>
+        
+        <div class="setting-item">
+          <label class="setting-label">
+            <input type="checkbox" id="notificationsEnabled">
+            <span>Show notifications</span>
+          </label>
+          <p class="setting-description">Get notified when services are visited</p>
+        </div>
+
+        <div class="setting-item">
+          <label class="setting-label">
+            <input type="checkbox" id="autoCloseTab">
+            <span>Auto-close tabs</span>
+          </label>
+          <p class="setting-description">Automatically close tabs after visiting</p>
+        </div>
+
+        <div class="setting-item">
+          <label class="setting-label">Default keep-open duration</label>
+          <input type="number" id="defaultKeepOpen" min="5" max="60" value="10" class="setting-input">
+          <p class="setting-description">Seconds to keep tabs open (default)</p>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">Data Management</h3>
+        
+        <button class="btn-secondary" id="exportBtn">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Export Data
+        </button>
+        
+        <button class="btn-secondary" id="importBtn">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Import Data
+        </button>
+        <input type="file" id="importFile" accept=".json" style="display: none;">
+        
+        <button class="btn-danger" id="clearAllBtn">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Clear All Data
+        </button>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">About</h3>
+        <p class="about-text">
+          <strong>ServiceKeeper v1.0.0</strong><br>
+          Keep your free services alive by automatically visiting their dashboards.<br>
+          All data is encrypted locally for your security.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Service Modal -->
+  <div class="modal" id="addServiceModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Service</h2>
+        <button class="modal-close" id="closeServiceModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Service Name</label>
+          <input type="text" id="serviceName" placeholder="e.g., Heroku Dashboard" class="form-input">
+        </div>
+        
+        <div class="form-group">
+          <label>Dashboard URL</label>
+          <input type="url" id="serviceUrl" placeholder="https://dashboard.example.com" class="form-input">
+        </div>
+        
+        <div class="form-group">
+          <label>Visit Interval</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="number" id="serviceInterval" min="1" max="9999" value="24" class="form-input" style="flex: 1;">
+            <select id="serviceIntervalUnit" class="form-input" style="flex: 0 0 120px;">
+              <option value="hours">Hours</option>
+              <option value="days">Days</option>
+              <option value="weeks">Weeks</option>
+            </select>
+          </div>
+          <small class="form-hint">How often to visit this service</small>
+        </div>
+        
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="serviceAutoClose" checked>
+            <span>Auto-close tab</span>
+          </label>
+        </div>
+        
+        <div class="form-group" id="keepOpenGroup">
+          <label>Keep Tab Open (seconds)</label>
+          <input type="number" id="serviceKeepOpen" min="5" max="300" value="10" class="form-input">
+          <small class="form-hint">How long to keep the tab open (5-300 seconds)</small>
+        </div>
+        
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="serviceEnabled" checked>
+            <span>Enable immediately</span>
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="serviceNotifications" checked>
+            <span>Show notifications</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelServiceBtn">Cancel</button>
+        <button class="btn-primary" id="saveServiceBtn">Save Service</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add 2FA Modal -->
+  <div class="modal" id="add2FAModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add 2FA Token</h2>
+        <button class="modal-close" id="close2FAModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Account Name</label>
+          <input type="text" id="totpName" placeholder="e.g., GitHub" class="form-input">
+        </div>
+        
+        <div class="form-group">
+          <label>Secret Key or QR Data</label>
+          <input type="text" id="totpSecret" placeholder="JBSWY3DPEHPK3PXP or otpauth://..." class="form-input">
+          <small class="form-hint">Enter the base32 secret or paste otpauth:// URI from QR code</small>
+        </div>
+        
+        <div class="form-group">
+          <button class="btn-secondary" id="scanQRBtn">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="8" height="8" stroke="currentColor" stroke-width="2"/>
+              <rect x="13" y="3" width="8" height="8" stroke="currentColor" stroke-width="2"/>
+              <rect x="3" y="13" width="8" height="8" stroke="currentColor" stroke-width="2"/>
+              <path d="M13 13h8v8h-8z" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            Upload QR Code Image
+          </button>
+          <input type="file" id="qrImageInput" accept="image/*" style="display: none;">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancel2FABtn">Cancel</button>
+        <button class="btn-primary" id="save2FABtn">Save Token</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="jsQR.js"></script>
+  <script src="crypto.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "version": "1.0.0",
+  "exportDate": "2025-01-31T12:00:00.000Z",
+  "services": [
+    {
+      "id": "1738329600000",
+      "name": "Heroku Dashboard",
+      "url": "https://dashboard.heroku.com/apps",
+      "intervalHours": 24,
+      "keepOpenSeconds": 10,
+      "enabled": true,
+      "notifications": true,
+      "nextRun": 1738416000000,
+      "lastVisit": 1738329600000,
+      "visitCount": 42,
+      "createdAt": 1738243200000
+    },
+    {
+      "id": "1738329601000",
+      "name": "Railway Project",
+      "url": "https://railway.app/dashboard",
+      "intervalHours": 48,
+      "keepOpenSeconds": 15,
+      "enabled": true,
+      "notifications": false,
+      "nextRun": 1738502400000,
+      "lastVisit": 1738329600000,
+      "visitCount": 21,
+      "createdAt": 1738243200000
+    }
+  ],
+  "totpTokens": [
+    {
+      "id": "1738329602000",
+      "name": "GitHub",
+      "secret": "JBSWY3DPEHPK3PXP",
+      "createdAt": 1738243200000
+    }
+  ],
+  "settings": {
+    "notificationsEnabled": true,
+    "autoCloseTab": true,
+    "defaultKeepOpen": 10
+  }
+}
