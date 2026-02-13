@@ -4,6 +4,7 @@ let services = [];
 let totpTokens = [];
 let serviceCountdownIntervalId = null;
 let totpRefreshIntervalId = null;
+let editingServiceId = null;
 let totpVaultState = {
   encrypted: false,
   passphrase: null
@@ -189,6 +190,8 @@ function toggleKeepOpenField() {
 
 // Service management
 function openAddServiceModal() {
+  editingServiceId = null;
+  setServiceModalMode(false);
   document.getElementById('addServiceModal').classList.add('active');
   document.getElementById('serviceName').value = '';
   document.getElementById('serviceUrl').value = '';
@@ -203,7 +206,65 @@ function openAddServiceModal() {
 }
 
 function closeAddServiceModal() {
+  editingServiceId = null;
+  setServiceModalMode(false);
   document.getElementById('addServiceModal').classList.remove('active');
+}
+
+function setServiceModalMode(isEdit) {
+  const title = document.getElementById('serviceModalTitle');
+  const saveBtn = document.getElementById('saveServiceBtn');
+  if (title) title.textContent = isEdit ? 'Edit Service' : 'Add Service';
+  if (saveBtn) saveBtn.textContent = isEdit ? 'Update Service' : 'Save Service';
+}
+
+function getIntervalFormValues(service) {
+  if (service.intervalUnit && Number.isFinite(service.intervalValue)) {
+    return {
+      intervalUnit: service.intervalUnit,
+      intervalValue: service.intervalValue
+    };
+  }
+
+  if (service.intervalHours % (24 * 7) === 0) {
+    return {
+      intervalUnit: 'weeks',
+      intervalValue: service.intervalHours / (24 * 7)
+    };
+  }
+
+  if (service.intervalHours % 24 === 0) {
+    return {
+      intervalUnit: 'days',
+      intervalValue: service.intervalHours / 24
+    };
+  }
+
+  return {
+    intervalUnit: 'hours',
+    intervalValue: service.intervalHours
+  };
+}
+
+function openEditServiceModal(id) {
+  const service = services.find(s => s.id === id);
+  if (!service) return;
+
+  const intervalForm = getIntervalFormValues(service);
+  editingServiceId = id;
+  setServiceModalMode(true);
+
+  document.getElementById('addServiceModal').classList.add('active');
+  document.getElementById('serviceName').value = service.name;
+  document.getElementById('serviceUrl').value = service.url;
+  document.getElementById('serviceInterval').value = intervalForm.intervalValue;
+  document.getElementById('serviceIntervalUnit').value = intervalForm.intervalUnit;
+  document.getElementById('serviceAutoClose').checked = service.autoClose !== false;
+  document.getElementById('serviceKeepOpen').value = service.keepOpenSeconds || settings.defaultKeepOpen;
+  document.getElementById('serviceEnabled').checked = Boolean(service.enabled);
+  document.getElementById('serviceNotifications').checked = service.notifications !== false;
+  toggleKeepOpenField();
+  document.getElementById('serviceName').focus();
 }
 
 async function saveService() {
@@ -272,19 +333,66 @@ async function saveService() {
       return;
     }
     
-    console.log('Service object created:', service);
-    services.push(service);
-    await saveServices();
-    
-    if (enabled) {
-      const response = await chrome.runtime.sendMessage({
-        action: 'scheduleService',
-        service: service
-      });
+    if (editingServiceId) {
+      const index = services.findIndex(s => s.id === editingServiceId);
+      if (index === -1) {
+        alert('Service not found. Please try again.');
+        closeAddServiceModal();
+        return;
+      }
+
+      const existingService = services[index];
+      const updatedService = {
+        ...existingService,
+        name: service.name,
+        url: service.url,
+        intervalHours: service.intervalHours,
+        intervalValue: service.intervalValue,
+        intervalUnit: service.intervalUnit,
+        autoClose: service.autoClose,
+        keepOpenSeconds: service.keepOpenSeconds,
+        enabled: service.enabled,
+        notifications: service.notifications
+      };
+
+      if (updatedService.enabled) {
+        updatedService.nextRun = Date.now() + (updatedService.intervalHours * 60 * 60 * 1000);
+      }
+
+      services[index] = updatedService;
+      await saveServices();
+
+      if (updatedService.enabled) {
+        const response = await chrome.runtime.sendMessage({
+          action: 'scheduleService',
+          service: updatedService
+        });
+
+        if (!response || !response.success) {
+          console.error('Failed to reschedule service:', response?.error);
+          alert('Warning: Service updated but scheduling may have failed. Check the console.');
+        }
+      } else {
+        await chrome.runtime.sendMessage({
+          action: 'unscheduleService',
+          serviceId: updatedService.id
+        });
+      }
+    } else {
+      console.log('Service object created:', service);
+      services.push(service);
+      await saveServices();
       
-      if (!response || !response.success) {
-        console.error('Failed to schedule service:', response?.error);
-        alert('Warning: Service saved but scheduling may have failed. Check the console.');
+      if (enabled) {
+        const response = await chrome.runtime.sendMessage({
+          action: 'scheduleService',
+          service: service
+        });
+        
+        if (!response || !response.success) {
+          console.error('Failed to schedule service:', response?.error);
+          alert('Warning: Service saved but scheduling may have failed. Check the console.');
+        }
       }
     }
     
@@ -408,6 +516,12 @@ function renderServices() {
                   : '<path d="M8 5v14l11-7z" fill="currentColor"/>'}
               </svg>
             </button>
+            <button class="icon-btn btn-edit-service" data-service-id="${service.id}" title="Config">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5A3.5 3.5 0 0 0 12 15.5Z" stroke="currentColor" stroke-width="2"/>
+                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1 0 2.83a2 2 0 0 1-2.83 0l-.06-.06a1.7 1.7 0 0 0-1.87-.34a1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.25.64.89 1.04 1.56 1.04H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04V15Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
             <button class="icon-btn btn-test-service" data-service-id="${service.id}" title="Test Now">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -460,6 +574,9 @@ function renderServices() {
   // Attach event listeners using event delegation
   container.querySelectorAll('.btn-toggle-service').forEach(btn => {
     btn.addEventListener('click', () => toggleService(btn.dataset.serviceId));
+  });
+  container.querySelectorAll('.btn-edit-service').forEach(btn => {
+    btn.addEventListener('click', () => openEditServiceModal(btn.dataset.serviceId));
   });
   container.querySelectorAll('.btn-test-service').forEach(btn => {
     btn.addEventListener('click', () => testService(btn.dataset.serviceId));
