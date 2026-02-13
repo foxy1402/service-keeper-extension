@@ -97,6 +97,107 @@ class SecureStorage {
   }
 }
 
+// Passphrase encryption for backup import/export
+class BackupCrypto {
+  static async derivePassphraseKey(passphrase, salt) {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(passphrase),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+
+    return crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 250000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  static bytesToBase64(bytes) {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  }
+
+  static base64ToBytes(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  static async encryptBackup(data, passphrase) {
+    const normalizedPassphrase = (passphrase || '').trim();
+    if (!normalizedPassphrase) {
+      throw new Error('Passphrase is required for encrypted backups');
+    }
+
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await this.derivePassphraseKey(normalizedPassphrase, salt);
+    const encoder = new TextEncoder();
+
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      encoder.encode(JSON.stringify(data))
+    );
+
+    return {
+      format: 'servicekeeper-backup',
+      version: '2.0.0',
+      encrypted: true,
+      kdf: 'PBKDF2-SHA256',
+      iterations: 250000,
+      salt: this.bytesToBase64(salt),
+      iv: this.bytesToBase64(iv),
+      ciphertext: this.bytesToBase64(new Uint8Array(encrypted)),
+      exportDate: new Date().toISOString()
+    };
+  }
+
+  static async decryptBackup(payload, passphrase) {
+    if (!payload || !payload.encrypted) {
+      throw new Error('Backup payload is not encrypted');
+    }
+
+    const normalizedPassphrase = (passphrase || '').trim();
+    if (!normalizedPassphrase) {
+      throw new Error('Passphrase is required');
+    }
+
+    const salt = this.base64ToBytes(payload.salt);
+    const iv = this.base64ToBytes(payload.iv);
+    const ciphertext = this.base64ToBytes(payload.ciphertext);
+    const key = await this.derivePassphraseKey(normalizedPassphrase, salt);
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      ciphertext
+    );
+
+    const decoder = new TextDecoder();
+    return JSON.parse(decoder.decode(decrypted));
+  }
+}
+
 // 2FA Token Generator (TOTP)
 class TOTPGenerator {
   static base32Decode(base32) {
@@ -104,14 +205,20 @@ class TOTPGenerator {
     let bits = '';
     let hex = '';
     
-    base32 = base32.replace(/=+$/, '').toUpperCase();
+    // Remove spaces and padding, convert to uppercase
+    base32 = base32.replace(/[\s=]+$/g, '').toUpperCase();
     
+    // Validate characters
     for (let i = 0; i < base32.length; i++) {
-      const val = alphabet.indexOf(base32.charAt(i));
-      if (val === -1) continue;
+      const char = base32.charAt(i);
+      const val = alphabet.indexOf(char);
+      if (val === -1) {
+        throw new Error(`Invalid base32 character: ${char}`);
+      }
       bits += val.toString(2).padStart(5, '0');
     }
     
+    // Convert to hex
     for (let i = 0; i + 8 <= bits.length; i += 8) {
       const chunk = bits.substr(i, 8);
       hex += parseInt(chunk, 2).toString(16).padStart(2, '0');
@@ -129,8 +236,9 @@ class TOTPGenerator {
       const keyHex = this.base32Decode(secret);
       const keyBytes = new Uint8Array(keyHex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
       
-      // Get current time step (30 seconds)
-      const epoch = time || Math.floor(Date.now() / 1000);
+      // Get current time step (30 seconds) - use consistent time
+      const now = Date.now();
+      const epoch = time || Math.floor(now / 1000);
       const timeStep = Math.floor(epoch / 30);
       
       // Convert time to 8-byte array
@@ -165,8 +273,8 @@ class TOTPGenerator {
       // Generate 6-digit code
       const code = (binary % 1000000).toString().padStart(6, '0');
       
-      // Calculate remaining seconds
-      const remainingSeconds = 30 - (Math.floor(Date.now() / 1000) % 30);
+      // Calculate remaining seconds using the same 'now' timestamp
+      const remainingSeconds = 30 - (Math.floor(now / 1000) % 30);
       
       return { code, remainingSeconds };
     } catch (error) {

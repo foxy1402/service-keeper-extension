@@ -144,7 +144,7 @@ Set custom intervals based on each provider's specific requirements!
 - **Default keep-open duration**: Set default seconds for new services
 
 ### Data Management
-- **Export Data**: Download encrypted backup as JSON
+- **Export Data**: Download JSON backup (optionally encrypted with a passphrase)
 - **Import Data**: Restore from backup file
 - **Clear All Data**: Complete reset (requires confirmation)
 

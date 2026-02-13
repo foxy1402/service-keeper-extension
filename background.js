@@ -1,10 +1,14 @@
 // ServiceKeeper Background Service Worker
 importScripts('crypto.js');
 
+// Track initialization state
+let isInitialized = false;
+
 // Initialize extension
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('ServiceKeeper installed');
   await initializeSchedules();
+  isInitialized = true;
 });
 
 // Initialize all schedules
@@ -13,7 +17,7 @@ async function initializeSchedules() {
   if (!data || !data.services) return;
   
   for (const service of data.services) {
-    if (service.enabled) {
+    if (isSchedulableService(service) && service.enabled) {
       await scheduleService(service);
     }
   }
@@ -21,6 +25,11 @@ async function initializeSchedules() {
 
 // Schedule a service visit
 async function scheduleService(service) {
+  if (!isSchedulableService(service)) {
+    console.warn('[Schedule] Skipping invalid service payload:', service);
+    return;
+  }
+
   const alarmName = `service_${service.id}`;
   
   console.log(`[Schedule] Scheduling ${service.name} (ID: ${service.id})`);
@@ -37,6 +46,14 @@ async function scheduleService(service) {
     nextRun = calculateCatchUpTime(service, now);
     
     // Update the service with new next run time
+    await updateServiceNextRun(service.id, nextRun);
+  }
+  
+  // Ensure minimum 1 minute delay for Chrome alarms
+  const minimumDelay = now + 60000; // 1 minute from now
+  if (nextRun < minimumDelay) {
+    console.log(`[Schedule] Adjusting next run to meet 1-minute minimum`);
+    nextRun = minimumDelay;
     await updateServiceNextRun(service.id, nextRun);
   }
   
@@ -81,7 +98,31 @@ async function updateServiceNextRun(serviceId, nextRun) {
 
 // Handle alarms
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  // Ensure initialization
+  if (!isInitialized) {
+    await initializeSchedules();
+    isInitialized = true;
+  }
+  
   console.log('[Alarm] Triggered:', alarm.name);
+  
+  // Handle tab close alarms
+  if (alarm.name.startsWith('close_tab_')) {
+    const stored = await chrome.storage.local.get([alarm.name]);
+    const tabId = stored[alarm.name];
+    if (tabId) {
+      try {
+        await chrome.tabs.remove(tabId);
+        console.log(`[Visit] Tab ${tabId} closed by alarm`);
+      } catch (error) {
+        console.log(`[Visit] Tab ${tabId} already closed`);
+      }
+      await chrome.storage.local.remove(alarm.name);
+    }
+    return;
+  }
+  
+  // Handle service visit alarms
   if (!alarm.name.startsWith('service_')) return;
   
   const serviceId = alarm.name.replace('service_', '');
@@ -99,23 +140,45 @@ async function visitService(serviceId) {
     }
     
     const service = data.services.find(s => s.id === serviceId);
-    if (!service || !service.enabled) {
+    if (!service || !service.enabled || !isSchedulableService(service)) {
       console.log('[Visit] Service not found or disabled:', serviceId);
       return;
     }
     
     console.log(`[Visit] Opening ${service.name}: ${service.url}`);
     
+    // Validate URL before opening
+    try {
+      new URL(service.url);
+    } catch (urlError) {
+      console.error(`[Visit] Invalid URL for service ${service.name}:`, urlError);
+      service.lastAttempt = Date.now();
+      service.lastError = 'Invalid URL';
+      await SecureStorage.saveSecure('services', data);
+      return;
+    }
+    
     // Open the URL in a new tab
-    const tab = await chrome.tabs.create({
-      url: service.url,
-      active: false // Don't switch to the tab
-    });
+    let tab;
+    try {
+      tab = await chrome.tabs.create({
+        url: service.url,
+        active: false // Don't switch to the tab
+      });
+    } catch (tabError) {
+      console.error(`[Visit] Failed to create tab:`, tabError);
+      service.lastAttempt = Date.now();
+      service.lastError = tabError.message;
+      await SecureStorage.saveSecure('services', data);
+      return;
+    }
     
     console.log(`[Visit] Tab created: ${tab.id}`);
     
     // Update last visit time
     service.lastVisit = Date.now();
+    service.lastAttempt = Date.now();
+    service.lastError = null;
     service.visitCount = (service.visitCount || 0) + 1;
     
     // Calculate next run time
@@ -125,18 +188,18 @@ async function visitService(serviceId) {
     await SecureStorage.saveSecure('services', data);
     console.log(`[Visit] Service updated. Visit count: ${service.visitCount}, Next run: ${new Date(service.nextRun).toLocaleString()}`);
     
-    // Close the tab after a delay (give it time to load) - only if autoClose is enabled
+    // Close the tab after a delay - use alarm for reliability
     if (service.autoClose !== false) {
       const keepOpenMs = (service.keepOpenSeconds || 10) * 1000;
       console.log(`[Visit] Will auto-close tab in ${service.keepOpenSeconds || 10} seconds`);
-      setTimeout(async () => {
-        try {
-          await chrome.tabs.remove(tab.id);
-          console.log(`[Visit] Tab ${tab.id} closed`);
-        } catch (error) {
-          console.log(`[Visit] Tab ${tab.id} already closed`);
-        }
-      }, keepOpenMs);
+      
+      const closeAlarmName = `close_tab_${tab.id}`;
+      await chrome.alarms.create(closeAlarmName, {
+        when: Date.now() + keepOpenMs
+      });
+      
+      // Store tab ID for later
+      await chrome.storage.local.set({ [closeAlarmName]: tab.id });
     } else {
       console.log('[Visit] Auto-close disabled, tab will stay open');
     }
@@ -161,7 +224,19 @@ async function visitService(serviceId) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Message] Received:', request.action);
   
+  // Ensure initialization
+  if (!isInitialized) {
+    initializeSchedules().then(() => {
+      isInitialized = true;
+    });
+  }
+  
   if (request.action === 'scheduleService') {
+    if (!isSchedulableService(request.service)) {
+      sendResponse({ success: false, error: 'Invalid service payload' });
+      return false;
+    }
+
     scheduleService(request.service).then(() => {
       console.log('[Message] Schedule completed successfully');
       sendResponse({ success: true });
@@ -204,8 +279,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+function isSchedulableService(service) {
+  if (!service || typeof service !== 'object') return false;
+  if (!service.id || typeof service.id !== 'string') return false;
+  if (typeof service.url !== 'string') return false;
+  if (!Number.isFinite(service.intervalHours) || service.intervalHours <= 0) return false;
+
+  try {
+    const parsed = new URL(service.url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+  } catch (error) {
+    return false;
+  }
+
+  return true;
+}
+
 // Check for missed schedules on startup
 chrome.runtime.onStartup.addListener(async () => {
   console.log('ServiceKeeper started - checking for missed schedules');
   await initializeSchedules();
+  isInitialized = true;
 });
