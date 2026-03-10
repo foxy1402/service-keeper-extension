@@ -1,14 +1,10 @@
 // ServiceKeeper Background Service Worker
 importScripts('crypto.js');
 
-// Track initialization state
-let isInitialized = false;
-
 // Initialize extension
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('ServiceKeeper installed');
   await initializeSchedules();
-  isInitialized = true;
 });
 
 // Initialize all schedules
@@ -98,12 +94,6 @@ async function updateServiceNextRun(serviceId, nextRun) {
 
 // Handle alarms
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  // Ensure initialization
-  if (!isInitialized) {
-    await initializeSchedules();
-    isInitialized = true;
-  }
-  
   console.log('[Alarm] Triggered:', alarm.name);
   
   // Handle tab close alarms
@@ -223,14 +213,7 @@ async function visitService(serviceId) {
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Message] Received:', request.action);
-  
-  // Ensure initialization
-  if (!isInitialized) {
-    initializeSchedules().then(() => {
-      isInitialized = true;
-    });
-  }
-  
+
   if (request.action === 'scheduleService') {
     if (!isSchedulableService(request.service)) {
       sendResponse({ success: false, error: 'Invalid service payload' });
@@ -299,5 +282,4 @@ function isSchedulableService(service) {
 chrome.runtime.onStartup.addListener(async () => {
   console.log('ServiceKeeper started - checking for missed schedules');
   await initializeSchedules();
-  isInitialized = true;
 });
